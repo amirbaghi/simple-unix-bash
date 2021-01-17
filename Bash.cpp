@@ -21,6 +21,16 @@ void Bash::extract_arguments(string &input, vector<string> &args)
 
 }
 
+void Bash::change_directory(std::string directory)
+{
+    int status = chdir(const_cast<char *>(directory.c_str()));
+    if (status != 0) 
+    {
+        cout << "ERROR: Changing directory failed" << endl;
+        exit(1);
+    }
+}
+
 void Bash::fg_exec(vector<std::string> &args)
 {
 
@@ -58,6 +68,15 @@ void Bash::fg_exec(vector<std::string> &args)
     }
 }
 
+void Bash::current_directory()
+{
+    char s[100];
+
+    getcwd(s, 100);
+
+    cout << s << endl;
+}
+
 void Bash::bash()
 {
     string input;
@@ -74,9 +93,18 @@ void Bash::bash()
         {
             exit(0);
         }
-        fg_exec(args);
-
-        cout << endl;
+        else if (args[0] == "cd")
+        {
+            change_directory(args[1]);
+        }
+        else if (args[0] == "pwd")
+        {
+            current_directory();
+        }
+        else
+        {
+            fg_exec(args);
+        }
     }
 }
 

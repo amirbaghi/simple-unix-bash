@@ -16,6 +16,12 @@ namespace Bash
     // Function responsible for executing foreground programs
     void fg_exec(std::vector<std::string> &args);
 
+    // Function responsible for changing directory
+    void change_directory(std::string directory);
+
+    // Function responsible for printing current directory
+    void current_directory();
+
 }; // namespace Bash
 
 #endif
