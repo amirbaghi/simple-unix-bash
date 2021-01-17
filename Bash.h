@@ -2,6 +2,7 @@
 #include <vector>
 #ifndef BASH_MINE_H
 #define BASH_MINE_H
+#define MAXIMUM_SIZE 1000
 
 namespace Bash
 {
