@@ -15,7 +15,6 @@ namespace Bash
     // Function responsible for executing foreground programs
     void fg_exec(std::vector<std::string> args);
 
-
 }; // namespace Bash
 
 #endif
