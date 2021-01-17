@@ -41,7 +41,7 @@ void Bash::fg_exec(vector<std::string> &args)
 
     // Making a vector of char pointers from the vector of strings
     std::vector<char *> argv;
-    argv.reserve(args.size());
+    argv.reserve(args.size() + 1);
 
     for (int i = 0; i < args.size(); ++i)
         argv.push_back(const_cast<char *>(args[i].c_str()));
@@ -89,7 +89,7 @@ void Bash::bg_exec(std::vector<std::string> &args, int *number_of_bg_processes)
 
     // Making a vector of char pointers from the vector of strings
     std::vector<char *> argv;
-    argv.reserve(args.size());
+    argv.reserve(args.size() + 1);
 
     for (int i = 0; i < args.size(); ++i)
         argv.push_back(const_cast<char *>(args[i].c_str()));
