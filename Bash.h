@@ -1,4 +1,5 @@
 #include <iostream>
+#include <map>
 #include <vector>
 #ifndef BASH_MINE_H
 #define BASH_MINE_H
@@ -17,13 +18,17 @@ namespace Bash
     void fg_exec(std::vector<std::string> &args);
 
     // Function responsible for executing background programs
-    void bg_exec(std::vector<std::string> &args, int* number_of_bg_processes);
+    void bg_exec(std::vector<std::string> &args, std::map<pid_t, std::string>& current_bg_processes);
 
     // Function responsible for changing directory
     void change_directory(std::string directory);
 
     // Function responsible for printing current directory
     void current_directory();
+
+    // Function responsible for listing the background processes
+    void bg_list(std::map<pid_t, std::string> bg_processes);
+
 
 }; // namespace Bash
 

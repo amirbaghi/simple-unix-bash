@@ -57,7 +57,7 @@ void Bash::fg_exec(vector<std::string> &args)
         cout << "ERROR: Forking Process Failed" << endl;
         exit(1);
     }
-    // Executing
+    // Executing (in child process)
     else if (pid == 0)
     {
         int status = execvp(argv[0], &argv[0]);
@@ -68,24 +68,21 @@ void Bash::fg_exec(vector<std::string> &args)
             exit(1);
         }
     }
-    // Waiting on the child process
+    // Waiting on the child process (in parent process)
     else
     {
         int status = waitpid(pid, NULL, WUNTRACED);
     }
 }
 
-void Bash::bg_exec(std::vector<std::string> &args, int *number_of_bg_processes)
+void Bash::bg_exec(std::vector<std::string> &args, map<pid_t, string>& current_bg_processes)
 {
     // Checking if we already have 5 processes running in the background
-    if (*number_of_bg_processes == 0)
+    if (current_bg_processes.size() == 5)
     {
         cout << "ERROR: Too many background processes already running." << endl;
         return;
     }
-
-    // Incrementing the number of background processes
-    *number_of_bg_processes += 1;
 
     // Making a vector of char pointers from the vector of strings
     std::vector<char *> argv;
@@ -105,7 +102,7 @@ void Bash::bg_exec(std::vector<std::string> &args, int *number_of_bg_processes)
         cout << "ERROR: Forking Process Failed" << endl;
         exit(1);
     }
-    // Executing
+    // Executing (in child process)
     else if (pid == 0)
     {
         int status = execvp(argv[1], &argv[1]);
@@ -116,8 +113,12 @@ void Bash::bg_exec(std::vector<std::string> &args, int *number_of_bg_processes)
             exit(1);
         }
     }
+    // Printing a message indicating the execution of the background process (in the parent process)
     else 
     {
+        // Including the new background process into the map of background processes
+        current_bg_processes[pid] = args[1];
+
         cout << "Background process " << pid << " started executing." << endl;
     }
 }
@@ -133,11 +134,23 @@ void Bash::current_directory()
     cout << s << endl;
 }
 
+void Bash::bg_list(map<pid_t, std::string> bg_processes)
+{
+    // Printing the current background processes
+    auto j = 1;
+    for (auto i = bg_processes.begin(); i != bg_processes.end(); ++i, ++j) {
+        cout << "(" << j << ") " << i->second << endl;    
+    }
+
+    cout << "Total background jobs: " << bg_processes.size() << endl;
+}
+
+
 void Bash::bash()
 {
     string input;
     vector<string> args;
-    int number_of_bg_processes = 0;
+    map<pid_t, string> current_bg_processes;
     args.reserve(MAXIMUM_SIZE);
 
     // Main Bash Loop
@@ -152,7 +165,8 @@ void Bash::bash()
         {
             // Print message and decrement the number of background processes
             cout << "Background process " << bg_status << " has finished executing." << endl;
-            number_of_bg_processes--;
+            // Erase the background process from the map
+            current_bg_processes.erase(bg_status);
         }
 
         // Printing the prompt and getting input from user
@@ -177,7 +191,11 @@ void Bash::bash()
         }
         else if (args[0] == "bg")
         {
-            bg_exec(args, &number_of_bg_processes);
+            bg_exec(args, current_bg_processes);
+        }
+        else if (args[0] == "bglist")
+        {
+            bg_list(current_bg_processes);
         }
         else
         {
