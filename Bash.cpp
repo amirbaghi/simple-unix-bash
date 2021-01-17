@@ -78,7 +78,7 @@ void Bash::fg_exec(vector<std::string> &args)
 void Bash::bg_exec(std::vector<std::string> &args, int *number_of_bg_processes)
 {
     // Checking if we already have 5 processes running in the background
-    if (*number_of_bg_processes == 5)
+    if (*number_of_bg_processes == 0)
     {
         cout << "ERROR: Too many background processes already running." << endl;
         return;
@@ -116,7 +116,10 @@ void Bash::bg_exec(std::vector<std::string> &args, int *number_of_bg_processes)
             exit(1);
         }
     }
-
+    else 
+    {
+        cout << "Background process " << pid << " started executing." << endl;
+    }
 }
 
 void Bash::current_directory()
