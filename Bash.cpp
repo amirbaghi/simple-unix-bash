@@ -12,7 +12,7 @@ void Bash::extract_arguments(string &input, vector<string> &args)
     args.clear();
 
     // Applying Regex
-    regex delims("[^ \t\n]+");
+    regex delims("[^\\s\"]+|([\"\'])(?:(?=(\\?))\2.)*?\1");
     auto tokens_begin = sregex_iterator(input.begin(), input.end(), delims);
     auto tokens_end = sregex_iterator();
     
