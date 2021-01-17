@@ -1,6 +1,7 @@
 #include "Bash.h"
 #include <regex>
 #include <unistd.h>
+#include <csignal>
 #include <sys/wait.h>
 
 using namespace std;
@@ -71,7 +72,7 @@ void Bash::fg_exec(vector<std::string> &args)
     // Waiting on the child process (in parent process)
     else
     {
-        int status = waitpid(pid, NULL, WUNTRACED);
+        int status = waitpid(pid, NULL, 0);
     }
 }
 
@@ -134,6 +135,17 @@ void Bash::current_directory()
     cout << s << endl;
 }
 
+pid_t Bash::find_pid(std::map<pid_t, std::string> bg_processes, int n)
+{
+    // Finding the pid based on the n given
+    auto j = 1;
+    for (auto i = bg_processes.begin(); i != bg_processes.end(); ++i, ++j) {
+        return i->first;    
+    }
+
+    return -1;
+}
+
 void Bash::bg_list(map<pid_t, std::string> bg_processes)
 {
     // Printing the current background processes
@@ -145,6 +157,56 @@ void Bash::bg_list(map<pid_t, std::string> bg_processes)
     cout << "Total background jobs: " << bg_processes.size() << endl;
 }
 
+void Bash::send_signal(pid_t pid, int signal_code)
+{
+    int status = kill(pid, signal_code);
+    if (status == -1)
+    {
+        cout << "ERROR: Signal failed to be sent." << endl;
+    }
+}
+
+void Bash::check_children(map<int, string>& current_bg_processes)
+{
+    int status;
+
+        int bg_status = waitpid(-1, &status, WNOHANG | WUNTRACED | WCONTINUED);
+
+        // If a background process has changed states
+        if (bg_status > 0)
+        {
+            // The process has started continuing
+            if (WIFCONTINUED(status))
+            {
+                // Removing the "(Stopped) " from the beginning of the process name in the map
+                string process_name = current_bg_processes[bg_status];
+                current_bg_processes[bg_status] = current_bg_processes[bg_status].substr(10, process_name.size() - 1);
+                cout << "Background process " << bg_status << " has continued executing." << endl;
+            }
+            // The process has been stopped
+            else if (WIFSTOPPED(status))
+            {
+                // Adding "(Stopped) " to the beginning of the process name in the map
+                string process_name = current_bg_processes[bg_status];
+                current_bg_processes[bg_status] = "(Stopped) " + process_name;
+                cout << "Background process " << bg_status << " has been stopped." << endl;
+            }
+            // The process has been terminated by a signal
+            else if (WIFSIGNALED(status))
+            {
+                // Erase the background process from the map
+                current_bg_processes.erase(bg_status);
+                cout << "Background process " << bg_status << " has been terminated." << endl;
+            }
+            // The process has exitted normally
+            else if (WIFEXITED(status))
+            {
+                // Erase the background process from the map
+                current_bg_processes.erase(bg_status);
+                cout << "Background process " << bg_status << " has finished executing." << endl;
+            }
+        }
+}
 
 void Bash::bash()
 {
@@ -156,18 +218,8 @@ void Bash::bash()
     // Main Bash Loop
     while (true)
     {
-        // Checking for any finished background processes
-
-        int bg_status = waitpid(-1, NULL, WNOHANG);
-
-        // If a background process is finished
-        if (bg_status > 0)
-        {
-            // Print message and decrement the number of background processes
-            cout << "Background process " << bg_status << " has finished executing." << endl;
-            // Erase the background process from the map
-            current_bg_processes.erase(bg_status);
-        }
+        // Checking for background processes
+        check_children(current_bg_processes);
 
         // Printing the prompt and getting input from user
         cout << "shell> ";
@@ -196,6 +248,42 @@ void Bash::bash()
         else if (args[0] == "bglist")
         {
             bg_list(current_bg_processes);
+        }
+        else if (args[0] == "bgkill")
+        {
+            pid_t pid = find_pid(current_bg_processes, stoi(args[1]));
+            if (pid == -1)
+            {
+                cout << "ERROR: No such process found" << endl;
+            }
+            else 
+            {
+                send_signal(pid, SIGTERM);
+            }
+        }
+        else if (args[0] == "bgstop")
+        {
+            pid_t pid = find_pid(current_bg_processes, stoi(args[1]));
+            if (pid == -1)
+            {
+                cout << "ERROR: No such process found" << endl;
+            }
+            else
+            {
+                send_signal(pid, SIGSTOP);
+            }
+        }
+        else if (args[0] == "bgstart")
+        {
+            pid_t pid = find_pid(current_bg_processes, stoi(args[1]));
+            if (pid == -1)
+            {
+                cout << "ERROR: No such process found" << endl;
+            }
+            else
+            {
+                send_signal(pid, SIGCONT);
+            }
         }
         else
         {
