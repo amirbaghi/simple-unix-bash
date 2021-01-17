@@ -11,10 +11,10 @@ namespace Bash
     void bash();
 
     // Function responsible for extracting arguments from input into a vector of strings
-    std::vector<std::string> extract_arguments(std::string input);
+    void extract_arguments(std::string &input, std::vector<std::string> &args);
 
     // Function responsible for executing foreground programs
-    void fg_exec(std::vector<std::string> args);
+    void fg_exec(std::vector<std::string> &args);
 
 }; // namespace Bash
 
