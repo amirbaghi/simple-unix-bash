@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <csignal>
 #include <sys/wait.h>
+#include <fcntl.h>
 
 using namespace std;
 
@@ -16,7 +17,7 @@ void Bash::extract_arguments(string &input, vector<string> &args)
     regex delims("[^\\s\"]+|([\"\'])(?:(?=(\\?))\2.)*?\1");
     auto tokens_begin = sregex_iterator(input.begin(), input.end(), delims);
     auto tokens_end = sregex_iterator();
-    
+
     // Filling the args vector with the tokens
     for (sregex_iterator i = tokens_begin; i != tokens_end; i++)
     {
@@ -40,7 +41,32 @@ void Bash::change_directory(std::string directory)
 void Bash::fg_exec(vector<std::string> &args)
 {
 
-    // Making a vector of char pointers from the vector of strings
+    string filename;
+    bool redir_in = false, redir_out = false;
+
+    // Checking if there is a redirection operator (>) in the command
+    auto iter = args.begin();
+    iter = std::find_if(iter, args.end(), [](string s) -> bool { return s == ">"; });
+
+    if (iter != args.end())
+    {
+        redir_out = true;
+        filename = *(iter + 1);
+        args.erase(iter, args.end());
+    }
+
+    // Checking if there is a redirection operator (<) in the command
+    iter = args.begin();
+    iter = std::find_if(iter, args.end(), [](string s) -> bool { return s == "<"; });
+
+    if (iter != args.end())
+    {
+        redir_in = true;
+        filename = *(iter + 1);
+        args.erase(iter, args.end());
+    }
+
+    // Making a vector of char pointers from the args
     std::vector<char *> argv;
     argv.reserve(args.size() + 1);
 
@@ -61,6 +87,33 @@ void Bash::fg_exec(vector<std::string> &args)
     // Executing (in child process)
     else if (pid == 0)
     {
+
+        // Setting the file as STDIN if there is a "<" operator in the args
+        if (redir_in)
+        {
+            int fd0;
+            if ((fd0 = open(const_cast<char *>(filename.c_str()), O_RDONLY)) < 0)
+            {
+                cout << "ERROR: Couldn't open file " << filename << endl;
+                exit(1);
+            }
+            dup2(fd0, STDIN_FILENO);
+            close(fd0);
+        }
+
+        // Setting the file as STDOUT if there is a ">" operator in the args
+        if (redir_out)
+        {
+            int fd1;
+            if ((fd1 = creat(const_cast<char *>(filename.c_str()), 0600)) < 0)
+            {
+                cout << "ERROR: Couldn't open/create file " << filename << endl;
+                exit(1);
+            }
+            dup2(fd1, STDOUT_FILENO);
+            close(fd1);
+        }
+
         int status = execvp(argv[0], &argv[0]);
         // Checking for error
         if (status < 0)
@@ -76,13 +129,38 @@ void Bash::fg_exec(vector<std::string> &args)
     }
 }
 
-void Bash::bg_exec(std::vector<std::string> &args, map<pid_t, string>& current_bg_processes)
+void Bash::bg_exec(std::vector<std::string> &args, map<pid_t, string> &current_bg_processes)
 {
     // Checking if we already have 5 processes running in the background
     if (current_bg_processes.size() == 5)
     {
         cout << "ERROR: Too many background processes already running." << endl;
         return;
+    }
+
+    string filename;
+    bool redir_in = false, redir_out = false;
+
+    // Checking if there is a redirection operator (>) in the command
+    auto iter = args.begin();
+    iter = std::find_if(iter, args.end(), [](string s) -> bool { return s == ">"; });
+
+    if (iter != args.end())
+    {
+        redir_out = true;
+        filename = *(iter + 1);
+        args.erase(iter, args.end());
+    }
+
+    // Checking if there is a redirection operator (<) in the command
+    iter = args.begin();
+    iter = std::find_if(iter, args.end(), [](string s) -> bool { return s == "<"; });
+
+    if (iter != args.end())
+    {
+        redir_in = true;
+        filename = *(iter + 1);
+        args.erase(iter, args.end());
     }
 
     // Making a vector of char pointers from the vector of strings
@@ -106,6 +184,33 @@ void Bash::bg_exec(std::vector<std::string> &args, map<pid_t, string>& current_b
     // Executing (in child process)
     else if (pid == 0)
     {
+
+        // Setting the file as STDIN if there is a "<" operator in the args
+        if (redir_in)
+        {
+            int fd0;
+            if ((fd0 = open(const_cast<char *>(filename.c_str()), O_RDONLY)) < 0)
+            {
+                cout << "ERROR: Couldn't open file " << filename << endl;
+                exit(1);
+            }
+            dup2(fd0, STDIN_FILENO);
+            close(fd0);
+        }
+
+        // Setting the file as STDOUT if there is a ">" operator in the args
+        if (redir_out)
+        {
+            int fd1;
+            if ((fd1 = creat(const_cast<char *>(filename.c_str()), 0600)) < 0)
+            {
+                cout << "ERROR: Couldn't open/create file " << filename << endl;
+                exit(1);
+            }
+            dup2(fd1, STDOUT_FILENO);
+            close(fd1);
+        }
+
         int status = execvp(argv[1], &argv[1]);
         // Checking for error
         if (status < 0)
@@ -115,7 +220,7 @@ void Bash::bg_exec(std::vector<std::string> &args, map<pid_t, string>& current_b
         }
     }
     // Printing a message indicating the execution of the background process (in the parent process)
-    else 
+    else
     {
         // Including the new background process into the map of background processes
         current_bg_processes[pid] = args[1];
@@ -139,8 +244,9 @@ pid_t Bash::find_pid(std::map<pid_t, std::string> bg_processes, int n)
 {
     // Finding the pid based on the n given
     auto j = 1;
-    for (auto i = bg_processes.begin(); i != bg_processes.end(); ++i, ++j) {
-        return i->first;    
+    for (auto i = bg_processes.begin(); i != bg_processes.end(); ++i, ++j)
+    {
+        return i->first;
     }
 
     return -1;
@@ -150,8 +256,9 @@ void Bash::bg_list(map<pid_t, std::string> bg_processes)
 {
     // Printing the current background processes
     auto j = 1;
-    for (auto i = bg_processes.begin(); i != bg_processes.end(); ++i, ++j) {
-        cout << "(" << j << ") " << i->second << endl;    
+    for (auto i = bg_processes.begin(); i != bg_processes.end(); ++i, ++j)
+    {
+        cout << "(" << j << ") " << i->second << endl;
     }
 
     cout << "Total background jobs: " << bg_processes.size() << endl;
@@ -166,46 +273,46 @@ void Bash::send_signal(pid_t pid, int signal_code)
     }
 }
 
-void Bash::check_children(map<int, string>& current_bg_processes)
+void Bash::check_children(map<int, string> &current_bg_processes)
 {
     int status;
 
-        int bg_status = waitpid(-1, &status, WNOHANG | WUNTRACED | WCONTINUED);
+    int bg_status = waitpid(-1, &status, WNOHANG | WUNTRACED | WCONTINUED);
 
-        // If a background process has changed states
-        if (bg_status > 0)
+    // If a background process has changed states
+    if (bg_status > 0)
+    {
+        // The process has started continuing
+        if (WIFCONTINUED(status))
         {
-            // The process has started continuing
-            if (WIFCONTINUED(status))
-            {
-                // Removing the "(Stopped) " from the beginning of the process name in the map
-                string process_name = current_bg_processes[bg_status];
-                current_bg_processes[bg_status] = current_bg_processes[bg_status].substr(10, process_name.size() - 1);
-                cout << "Background process " << bg_status << " has continued executing." << endl;
-            }
-            // The process has been stopped
-            else if (WIFSTOPPED(status))
-            {
-                // Adding "(Stopped) " to the beginning of the process name in the map
-                string process_name = current_bg_processes[bg_status];
-                current_bg_processes[bg_status] = "(Stopped) " + process_name;
-                cout << "Background process " << bg_status << " has been stopped." << endl;
-            }
-            // The process has been terminated by a signal
-            else if (WIFSIGNALED(status))
-            {
-                // Erase the background process from the map
-                current_bg_processes.erase(bg_status);
-                cout << "Background process " << bg_status << " has been terminated." << endl;
-            }
-            // The process has exitted normally
-            else if (WIFEXITED(status))
-            {
-                // Erase the background process from the map
-                current_bg_processes.erase(bg_status);
-                cout << "Background process " << bg_status << " has finished executing." << endl;
-            }
+            // Removing the "(Stopped) " from the beginning of the process name in the map
+            string process_name = current_bg_processes[bg_status];
+            current_bg_processes[bg_status] = current_bg_processes[bg_status].substr(10, process_name.size() - 1);
+            cout << "Background process " << bg_status << " has continued executing." << endl;
         }
+        // The process has been stopped
+        else if (WIFSTOPPED(status))
+        {
+            // Adding "(Stopped) " to the beginning of the process name in the map
+            string process_name = current_bg_processes[bg_status];
+            current_bg_processes[bg_status] = "(Stopped) " + process_name;
+            cout << "Background process " << bg_status << " has been stopped." << endl;
+        }
+        // The process has been terminated by a signal
+        else if (WIFSIGNALED(status))
+        {
+            // Erase the background process from the map
+            current_bg_processes.erase(bg_status);
+            cout << "Background process " << bg_status << " has been terminated." << endl;
+        }
+        // The process has exitted normally
+        else if (WIFEXITED(status))
+        {
+            // Erase the background process from the map
+            current_bg_processes.erase(bg_status);
+            cout << "Background process " << bg_status << " has finished executing." << endl;
+        }
+    }
 }
 
 void Bash::bash()
@@ -256,7 +363,7 @@ void Bash::bash()
             {
                 cout << "ERROR: No such process found" << endl;
             }
-            else 
+            else
             {
                 send_signal(pid, SIGTERM);
             }
@@ -294,6 +401,8 @@ void Bash::bash()
 
 int main(int argc, char **argv)
 {
+
     Bash::bash();
+
     return 0;
 }
