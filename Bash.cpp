@@ -7,21 +7,56 @@
 
 using namespace std;
 
-void Bash::extract_arguments(string &input, vector<string> &args)
+void Bash::extract_commands(string &input, vector<vector<string>> &cmds)
 {
-    string temp;
-    // Clearing the args vector from previous args
-    args.clear();
 
-    // Applying Regex
-    regex delims("[^\\s\"]+|([\"\'])(?:(?=(\\?))\2.)*?\1");
-    auto tokens_begin = sregex_iterator(input.begin(), input.end(), delims);
-    auto tokens_end = sregex_iterator();
+    string current_command;
+    // Clearing the cmds vector from previous cmds
+    cmds.clear();
 
-    // Filling the args vector with the tokens
-    for (sregex_iterator i = tokens_begin; i != tokens_end; i++)
+    // Regex for splitting the commands by |
+    regex pipe("(?=[^|])(?:[^|]*\\([^)]+\\))*[^|]*");
+    auto begin = sregex_iterator(input.begin(), input.end(), pipe);
+    auto end = sregex_iterator();
+
+    // Regex for single commands
+    regex delims("(\"([^\"]+)\")|(\'([^\']+)\')|\\S+");
+    sregex_iterator tokens_begin;
+    sregex_iterator tokens_end;
+
+    for (sregex_iterator i = begin; i != end; i++)
     {
-        args.push_back((*i).str());
+        // A single command
+        current_command = (*i).str();
+
+        tokens_begin = sregex_iterator(current_command.begin(), current_command.end(), delims);
+        tokens_end = sregex_iterator();
+
+        std::vector<string> args;
+
+        args.reserve(MAXIMUM_SIZE);
+
+        // Filling the args vector with the tokens extracted for the current command
+        for (sregex_iterator i = tokens_begin; i != tokens_end; i++)
+        {
+            // If the arg is double-quoted, add the arg string without the double-quotes
+            if ((*i).str()[0] == '"')
+            {
+                args.push_back((*i).str(2));
+            }
+            // If the arg is single-quoted, add the arg string without the single-quotes
+            else if ((*i).str()[0] == '\'')
+            {
+                args.push_back((*i).str(4));
+            }
+            else
+            {
+                args.push_back((*i).str());
+            }
+        }
+
+        // Push the command in the cmds vector
+        cmds.push_back(args);
     }
 }
 
@@ -38,7 +73,7 @@ void Bash::change_directory(std::string directory)
     }
 }
 
-void Bash::fg_exec(vector<std::string> &args)
+void Bash::fg_single_exec(vector<std::string> &args, int in_stream, int out_stream)
 {
 
     string filename;
@@ -88,7 +123,7 @@ void Bash::fg_exec(vector<std::string> &args)
     else if (pid == 0)
     {
 
-        // Setting the file as STDIN if there is a "<" operator in the args
+        // Setting the file as STDIN if there is a "<" operator in the args (Redirection)
         if (redir_in)
         {
             int fd0;
@@ -100,8 +135,14 @@ void Bash::fg_exec(vector<std::string> &args)
             dup2(fd0, STDIN_FILENO);
             close(fd0);
         }
+        // Setting the given in_stream as STDIN if it's not 0 (Used for piping)
+        else if (in_stream != STDIN_FILENO)
+        {
+            dup2(in_stream, STDIN_FILENO);
+            close(in_stream);
+        }
 
-        // Setting the file as STDOUT if there is a ">" operator in the args
+        // Setting the file as STDOUT if there is a ">" operator in the args (Redirection)
         if (redir_out)
         {
             int fd1;
@@ -113,8 +154,15 @@ void Bash::fg_exec(vector<std::string> &args)
             dup2(fd1, STDOUT_FILENO);
             close(fd1);
         }
+        // Setting the given out_stream as STDOUT if it's not 1 (Used for piping)
+        else if (out_stream != STDOUT_FILENO)
+        {
+            dup2(out_stream, STDOUT_FILENO);
+            close(out_stream);
+        }
 
         int status = execvp(argv[0], &argv[0]);
+
         // Checking for error
         if (status < 0)
         {
@@ -318,9 +366,9 @@ void Bash::check_children(map<int, string> &current_bg_processes)
 void Bash::bash()
 {
     string input;
-    vector<string> args;
+    vector<vector<string>> cmds;
     map<pid_t, string> current_bg_processes;
-    args.reserve(MAXIMUM_SIZE);
+    cmds.reserve(MAXIMUM_SIZE);
 
     // Main Bash Loop
     while (true)
@@ -330,35 +378,47 @@ void Bash::bash()
 
         // Printing the prompt and getting input from user
         cout << "shell> ";
+
         getline(cin, input);
 
-        // Extracting the arguments from the input
-        extract_arguments(input, args);
+        // Extracting the commands from the input
+        extract_commands(input, cmds);
 
-        // Running the appropriate function based on the first argument
-        if (args[0] == "exit")
+        // If nothing (whitespace, enter) was entered
+        if (cmds.size() == 0)
+        {
+            continue;
+        }
+        // Exit command
+        else if (cmds[0][0] == "exit")
         {
             exit(0);
         }
-        else if (args[0] == "cd")
+        // cd command
+        else if (cmds[0][0] == "cd")
         {
-            change_directory(args[1]);
+            change_directory(cmds[0][1]);
         }
-        else if (args[0] == "pwd")
+        // pwd command
+        else if (cmds[0][0] == "pwd")
         {
             current_directory();
         }
-        else if (args[0] == "bg")
+        // Background execution (Piping is not supported in background execution)
+        else if (cmds[0][0] == "bg")
         {
-            bg_exec(args, current_bg_processes);
+            bg_exec(cmds[0], current_bg_processes);
         }
-        else if (args[0] == "bglist")
+        // Bglist, listing current background processes
+        else if (cmds[0][0] == "bglist")
         {
             bg_list(current_bg_processes);
         }
-        else if (args[0] == "bgkill")
+        // Bgkill, signaling TERM to background process
+        else if (cmds[0][0] == "bgkill")
         {
-            pid_t pid = find_pid(current_bg_processes, stoi(args[1]));
+            // Finding the process based on the number given by the user
+            pid_t pid = find_pid(current_bg_processes, stoi(cmds[0][1]));
             if (pid == -1)
             {
                 cout << "ERROR: No such process found" << endl;
@@ -368,9 +428,11 @@ void Bash::bash()
                 send_signal(pid, SIGTERM);
             }
         }
-        else if (args[0] == "bgstop")
+        // Bgstop, signaling STOP to background process
+        else if (cmds[0][0] == "bgstop")
         {
-            pid_t pid = find_pid(current_bg_processes, stoi(args[1]));
+            // Finding the process based on the number given by the user
+            pid_t pid = find_pid(current_bg_processes, stoi(cmds[0][1]));
             if (pid == -1)
             {
                 cout << "ERROR: No such process found" << endl;
@@ -380,9 +442,11 @@ void Bash::bash()
                 send_signal(pid, SIGSTOP);
             }
         }
-        else if (args[0] == "bgstart")
+        // Bgstart, signaling START to background process
+        else if (cmds[0][0] == "bgstart")
         {
-            pid_t pid = find_pid(current_bg_processes, stoi(args[1]));
+            // Finding the process based on the number given by the user
+            pid_t pid = find_pid(current_bg_processes, stoi(cmds[0][1]));
             if (pid == -1)
             {
                 cout << "ERROR: No such process found" << endl;
@@ -392,17 +456,40 @@ void Bash::bash()
                 send_signal(pid, SIGCONT);
             }
         }
+        // Foreground execution (Piped or not)
         else
         {
-            fg_exec(args);
+            fg_exec(cmds);
         }
     }
 }
 
-int main(int argc, char **argv)
+void Bash::fg_exec(std::vector<std::vector<std::string>> &cmds)
 {
+    int current_in_stream;
+    int pipe_fd[2];
 
-    Bash::bash();
+    // Set the current input stream as STDIN, for the first process
+    current_in_stream = STDIN_FILENO;
 
-    return 0;
+    // Iterate over commands and pipe them
+    int i;
+    for (i = 0; i < cmds.size() - 1; i++)
+    {
+        // Creating a new pipe
+        pipe(pipe_fd);
+
+        // Executing the current command in a child process, using the current input stream and the write end of the pipe
+        fg_single_exec(cmds[i], current_in_stream, pipe_fd[1]);
+
+        // Closing the write end of the pipe, because the parent doesn't need it
+        close(pipe_fd[1]);
+
+        // Setting the next input stream as the read end of the previous pipe
+        current_in_stream = pipe_fd[0];
+    }
+
+    // Executing the last command using the current input stream and STDOUT as the output stream
+    fg_single_exec(cmds[i], current_in_stream, STDOUT_FILENO);
+    
 }
