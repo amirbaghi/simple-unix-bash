@@ -3,12 +3,19 @@
 #include <iostream>
 #include <map>
 #include <vector>
+
 #define MAXIMUM_SIZE 1000
+#define RESET "\033[0m"
+#define BACKGROUND_RED "\u001b[41m"  /* Background Red */
+#define BOLDYELLOW "\033[1m\033[33m"  /* Bold Yellow */
 
 namespace Bash
 {
     // Main function responsible for getting input and calling appropriate functions
     void bash();
+
+    // Function to display prompt
+    void display_prompt();
 
     // Function responsible for extracting commands from input into a vector of vector of strings
     void extract_commands(std::string &input, std::vector<std::vector<std::string>> &cmds);

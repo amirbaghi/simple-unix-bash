@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <csignal>
 #include <sys/wait.h>
+#include <pwd.h>
 #include <fcntl.h>
 
 using namespace std;
@@ -62,6 +63,20 @@ void Bash::extract_commands(string &input, vector<vector<string>> &cmds)
 
 void Bash::change_directory(std::string directory)
 {
+    // If ~ is entered, should change to home directory
+    if (directory == "~")
+    {
+        // Get home directory
+        const char *home_dir;
+        if ((home_dir = getenv("HOME")) == NULL)
+        {
+            home_dir = getpwuid(getuid())->pw_dir;
+        }
+        
+        string home_dir_str(home_dir);
+        directory = home_dir_str;
+    }
+
     // Change Directory
     int status = chdir(const_cast<char *>(directory.c_str()));
 
@@ -363,6 +378,40 @@ void Bash::check_children(map<int, string> &current_bg_processes)
     }
 }
 
+void Bash::display_prompt()
+{
+    char s[100];
+    char hostname[MAXIMUM_SIZE];
+    char username[MAXIMUM_SIZE];
+
+    // Get current working directory
+    getcwd(s, 100);
+    string working_dir(s);
+
+    // Get hostname
+    gethostname(hostname, MAXIMUM_SIZE);
+    string host_name(hostname);
+
+    // Get logged in user name
+    getlogin_r(username, MAXIMUM_SIZE);
+    string logged_user(username);
+
+    // Get home directory
+    const char *home_dir;
+    if ((home_dir = getenv("HOME")) == NULL)
+    {
+        home_dir = getpwuid(getuid())->pw_dir;
+    }
+    string home_dir_str(home_dir);
+
+    // Replace the home directory in the working directory with "~""
+    size_t pos = working_dir.find(home_dir_str);
+    working_dir.replace(pos, home_dir_str.size(), "~");
+
+    // Display the prompt
+    cout << BOLDYELLOW << logged_user << "@" << host_name << "[" << BACKGROUND_RED << working_dir << RESET << BOLDYELLOW << "]: shell> " << RESET;
+}
+
 void Bash::bash()
 {
     string input;
@@ -376,8 +425,8 @@ void Bash::bash()
         // Checking for background processes
         check_children(current_bg_processes);
 
-        // Printing the prompt and getting input from user
-        cout << "shell> ";
+        // Displaying the prompt and getting input from user
+        display_prompt();
 
         getline(cin, input);
 
@@ -491,5 +540,4 @@ void Bash::fg_exec(std::vector<std::vector<std::string>> &cmds)
 
     // Executing the last command using the current input stream and STDOUT as the output stream
     fg_single_exec(cmds[i], current_in_stream, STDOUT_FILENO);
-    
 }
